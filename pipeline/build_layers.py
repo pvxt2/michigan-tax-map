@@ -48,6 +48,7 @@ def norm(s):
     s = (s or "").upper().replace("&", " AND ")
     s = re.sub(r"\bST\.?\s", "ST ", s + " ")
     s = re.sub(r"\bSAINT\b", "ST", s)
+    s = re.sub(r"\bMOUNT\b", "MT", s)
     s = re.sub(r"[^A-Z0-9 ]", " ", s)
     return " ".join(s.split())
 
@@ -56,20 +57,39 @@ UNIT_WORDS = {"CHARTER", "TOWNSHIP", "TWP", "CITY", "OF", "THE", "VILLAGE"}
 
 
 def unit_norm(s):
-    words = norm(s).split()
+    n = re.sub(r"\bA MICHIGAN( CITY)?$", "", norm(s)).strip()  # "... Grosse Pointe Shores, a Michigan City"
+    words = n.split()
     if words and words[-1] in ("CIT", "CI"):  # name cut off in the report, e.g. "... Village Cit"
         words = words[:-1]
     return " ".join(w for w in words if w not in UNIT_WORDS)
 
 
+SCHOOL_PREFIX = re.compile(r"^(THE )?(SCHOOL DISTRICT OF (THE )?(CITY OF )?|PUBLIC SCHOOLS OF (THE )?(CITY OF )?|CITY OF |THE )")
+# Treasury rows for part of a district with its own debt or college millage, e.g.
+# "YPSILANTI SD (WILLOW R", "SHEPHERD SD W/MCC", "JEFFERSON SCHOOLS - R".
+QUALIFIED = re.compile(r"\(|\bW/|\s-\s?[A-Z]+$|-[A-Z]$|\bDEBT\b")
+
+
+def school_norm(s):
+    return SCHOOL_PREFIX.sub("", norm(s)).strip()
+
+
 def school_score(label, sd_name):
-    a, b = norm(label), norm(sd_name)
+    a, b = school_norm(label), school_norm(sd_name)
     if not a or not b:
         return 0.0
     ratio = SequenceMatcher(None, a, b[:len(a)]).ratio()
     fa, fb = a.split()[0], b.split()[0]
     first = 1.0 if fa == fb else (0.6 if fa.startswith(fb) or fb.startswith(fa) else 0.0)
-    return 0.65 * ratio + 0.35 * first
+    penalty = 0.08 if QUALIFIED.search((label or "").upper()) else 0.0
+    return 0.65 * ratio + 0.35 * first - penalty
+
+
+def same_district(label_a, label_b):
+    """Two Treasury labels for the same district (one usually qualified), e.g.
+    YPSILANTI SCHOOL DISTR / YPSILANTI SD (WILLOW R."""
+    a, b = school_norm(label_a).split(), school_norm(label_b).split()
+    return bool(a and b and a[0] == b[0])
 
 
 SMALL = {"of", "and", "the", "at"}
@@ -223,6 +243,10 @@ def main():
             return by_exact[(ccode, key, mtype)]
         if len(by_name.get((ccode, key), [])) == 1:
             return by_name[(ccode, key)][0]
+        pref = [u for (c, k), us in by_name.items() if c == ccode and len(k) >= 8 and len(key) >= 8
+                and (k.startswith(key) or key.startswith(k)) for u in us]
+        if len(pref) == 1:
+            return pref[0]
         cands = units[(units.county_code == ccode) & (units.unit_type == mtype)]
         best, score = None, 0
         for r in cands.itertuples():
@@ -240,10 +264,6 @@ def main():
                        else nice(l) for u, l in zip(pieces.uid, pieces.mlabel)]
     pieces["utype"] = [unit_info.loc[u, "unit_type"] if u in unit_info.index else t for u, t in zip(pieces.uid, pieces.mtype)]
     munis = pieces.dissolve(by="uid", as_index=False, aggfunc="first")[["uid", "uname", "utype", "ccode", "cname", "geometry"]]
-    missing_units = sorted(set(units.unit_code) - set(munis.uid))
-    units[units.unit_code.isin(missing_units)].to_csv(QA / "treasury_units_without_boundary.csv", index=False)
-    report.append(f"Cities and townships: {len(munis)} on the map, {len(unmatched_mcd[['mlabel','ccode']].drop_duplicates())} "
-                  f"without a Treasury match, {len(missing_units)} Treasury units without a boundary")
 
     # School districts and villages.
     sd = polys(load("schools"))
@@ -253,6 +273,33 @@ def main():
     vil = polys(load("villages"))
     vil["vname"] = vil[col(vil, "NAME")].map(lambda s: nice(re.sub(r"^village of\s+", "", s or "", flags=re.I)))
     vil = vil.dissolve(by="vname", as_index=False)[["vname", "geometry"]]
+
+    # Villages that have become cities (e.g. Manchester, 2023) are still villages in the boundary
+    # layer. When Treasury lists a city with no boundary, use the same-named village in that county.
+    vil_c = gpd.sjoin(label_points(vil), counties[["ccode", "geometry"]], how="left", predicate="within")
+    vil_c = vil_c[~vil_c.index.duplicated()]
+    promoted = []
+    for u in sorted(set(units[units.unit_type == "C"].unit_code) - set(munis.uid)):
+        info = unit_info.loc[u]
+        hit = vil_c[(vil_c.ccode == info.county_code) & (vil_c.vname.map(unit_norm) == unit_norm(info.unit_name))]
+        if hit.empty:
+            continue
+        vg = vil.loc[hit.index[0], "geometry"]
+        munis["geometry"] = [g.difference(vg) if g.intersects(vg) else g for g in munis.geometry]
+        c = counties[counties.ccode == info.county_code].iloc[0]
+        munis = pd.concat([munis, gpd.GeoDataFrame([{"uid": u, "uname": unit_display(info.unit_name, "C"), "utype": "C",
+                                                     "ccode": c.ccode, "cname": c.cname, "geometry": vg}], crs=METRIC)],
+                          ignore_index=True)
+        vil = vil.drop(index=hit.index[0])
+        promoted.append(info.unit_name)
+    munis = gpd.GeoDataFrame(munis, geometry="geometry", crs=METRIC)
+    munis = munis[~munis.geometry.is_empty]
+    if promoted:
+        report.append("Cities drawn from their former village boundary: " + ", ".join(promoted))
+    missing_units = sorted(set(units.unit_code) - set(munis.uid))
+    units[units.unit_code.isin(missing_units)].to_csv(QA / "treasury_units_without_boundary.csv", index=False)
+    report.append(f"Cities and townships: {len(munis)} on the map, {len(unmatched_mcd[['mlabel','ccode']].drop_duplicates())} "
+                  f"without a Treasury match, {len(missing_units)} Treasury units without a boundary")
 
     areas = gpd.overlay(munis[["uid", "uname", "utype", "ccode", "cname", "geometry"]], sd, how="intersection", keep_geom_type=True)
     areas = gpd.overlay(areas, vil, how="identity", keep_geom_type=True)
@@ -270,6 +317,8 @@ def main():
 
     # Match Treasury rows to (unit, school district [, village]).
     assigned = {}            # (uid, dcode, vname|None) -> row
+    alts = defaultdict(list)  # same key -> other rows for parts of that district
+    paired = []
     stars = set()
     unused_rows = []
     for uid, grp in areas.groupby("uid"):
@@ -300,8 +349,26 @@ def main():
                 used_d.add(d)
                 if rowset.loc[ri].label.upper() in dup_labels:
                     stars.add((uid, d, vname))
-            for ri in set(rowset.index) - used_r:
-                unused_rows.append(rowset.loc[ri])
+            # Renamed or merged districts: pair what is left over in this city or township.
+            left_r = [ri for ri in rowset.index if ri not in used_r]
+            left_d = [d for d in dmap.index if d not in used_d]
+            if left_r and left_d and (len(left_d) == 1 or len(left_r) == len(left_d)):
+                for sc, ri, d in sorted(((school_score(rowset.loc[ri].get("school_label", rowset.loc[ri].label), dmap.loc[d].sdname), ri, d)
+                                         for ri in left_r for d in left_d), reverse=True):
+                    if ri in used_r or d in used_d:
+                        continue
+                    assigned[(uid, d, vname)] = rowset.loc[ri]
+                    used_r.add(ri)
+                    used_d.add(d)
+                    paired.append((uid, rowset.loc[ri].label, dmap.loc[d].sdname))
+            # Rows for part of an already-matched district (different debt or college millage).
+            for ri in [ri for ri in rowset.index if ri not in used_r]:
+                r = rowset.loc[ri]
+                home = next((k for k, v in assigned.items() if k[0] == uid and k[2] == vname and same_district(v.label, r.label)), None)
+                if home:
+                    alts[home].append(r)
+                else:
+                    unused_rows.append(r)
 
         assign(sch_rows, dcodes, None)
 
@@ -342,9 +409,10 @@ def main():
         if row is None:
             row = assigned.get((r.uid, r.dcode, None))
         if row is None:
-            return pd.Series({"h": np.nan, "n": np.nan, "vrate": 0, "star": 0})
+            return pd.Series({"h": np.nan, "n": np.nan, "vrate": 0, "star": 0, "alt": None})
         key = (r.uid, r.dcode, r.vname if vil_rate else None)
-        return pd.Series({"h": row.pre, "n": row.nh, "vrate": int(vil_rate), "star": int(key in stars)})
+        alt = ";".join(f"{nice(a.label)}|{a.pre}|{a.nh}" for a in alts.get(key, [])) or None
+        return pd.Series({"h": row.pre, "n": row.nh, "vrate": int(vil_rate), "star": int(key in stars), "alt": alt})
 
     areas = pd.concat([areas, areas.apply(lookup, axis=1)], axis=1)
     areas = gpd.GeoDataFrame(areas, geometry="geometry", crs=METRIC)
@@ -364,9 +432,33 @@ def main():
         if cand.empty:
             continue
         best = max(cand.index, key=lambda j: probe.intersection(cand.at[j, "geometry"].boundary).length)
-        for k in ("uid", "uname", "utype", "ccode", "cname", "dcode", "sdname", "vname", "h", "n", "vrate", "star"):
+        for k in ("uid", "uname", "utype", "ccode", "cname", "dcode", "sdname", "vname", "h", "n", "vrate", "star", "alt"):
             areas.at[i, k] = areas.at[best, k]
         absorbed += 1
+
+    # Areas still without a rate (a district dissolved or missing from Treasury's list, small islands):
+    # use the rate of the rated area sharing the longest border in the same city or township, else the
+    # nearest one. These are marked as estimates on the map.
+    areas["est"] = 0
+    rated = areas[areas.h.notna()]
+    sidx = rated.sindex
+    estimated = 0
+    for i, r in areas[areas.h.isna()].iterrows():
+        probe = r.geometry.buffer(5)
+        cand = rated.iloc[sidx.query(probe, predicate="intersects")]
+        cand = cand[cand.uid == r.uid] if (cand.uid == r.uid).any() else cand
+        if cand.empty:
+            same = rated[rated.uid == r.uid]
+            pool = same if len(same) else rated
+            j = pool.distance(r.geometry).idxmin()
+            if pool.at[j, "geometry"].distance(r.geometry) > 5000:
+                continue
+        else:
+            j = max(cand.index, key=lambda k: probe.intersection(cand.at[k, "geometry"].boundary).length)
+        for k in ("h", "n", "vrate"):
+            areas.at[i, k] = areas.at[j, k]
+        areas.at[i, "est"] = 1
+        estimated += 1
 
     areas["vkey"] = areas["vname"].fillna("")
     areas = areas.dissolve(by=["uid", "dcode", "vkey"], as_index=False, aggfunc="first")
@@ -383,7 +475,8 @@ def main():
     vil_fallback = areas[areas.vname.notna() & (areas.vrate == 0) & areas.h.notna()]
     vil_fallback[["uname", "cname", "vname", "sdname"]].to_csv(QA / "villages_using_township_rate.csv", index=False)
     report += [
-        f"Tax areas: {len(areas)} ({absorbed} slivers merged)",
+        f"Tax areas: {len(areas)} ({absorbed} slivers merged, {estimated} given a neighbouring rate, "
+        f"{len(paired)} renamed or merged districts paired)",
         f"Area with a rate: {rated_share:.1%}",
         f"Areas without a rate: {len(unrated)} (see areas_without_rates.csv)",
         f"Treasury rows not placed on the map: {len(unused_rows)} (see treasury_rows_not_on_map.csv)",
@@ -412,7 +505,7 @@ def main():
     # Write layers.
     cp = ["id", "cname", "h", "n", "hmin", "hmax", "nmin", "nmax", "cnt"]
     mp = ["id", "uname", "utype", "cname", "h", "n", "hmin", "hmax", "nmin", "nmax", "cnt"]
-    ap = ["id", "uname", "cname", "sdname", "vname", "h", "n", "star", "vrate"]
+    ap = ["id", "uname", "cname", "sdname", "vname", "h", "n", "star", "vrate", "est", "alt"]
     write_seq(counties, OUT / "counties.geojsonl", "counties", 4, 14, cp)
     write_seq(munis, OUT / "munis.geojsonl", "munis", 6, 14, mp)
     write_seq(areas, OUT / "areas.geojsonl", "areas", 9, 14, ap)
