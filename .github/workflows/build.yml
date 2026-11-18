@@ -1,32 +1,25 @@
-name: Build and deploy
+name: Build site
 
-# Full build (data + map tiles + site): run it by hand from the Actions tab.
-# Pushing a change to the site/ folder re-uploads just the page files; the data stays as it is.
+# Run it by hand from the Actions tab. When it finishes, download the zip files from the
+# run page and upload them to Bluehost (see README, "Publishing on Bluehost").
 on:
   workflow_dispatch:
     inputs:
       refresh_basemap:
-        description: "Download a fresh basemap (otherwise this month's cached copy is reused)"
+        description: "Download a fresh basemap (otherwise this year's saved copy is reused)"
         type: boolean
         default: false
-      deploy:
-        description: "Upload to Bluehost when the build finishes"
+      include_basemap:
+        description: "Include the basemap file in the downloads even if it hasn't changed"
         type: boolean
-        default: true
-  push:
-    branches: [main]
-    paths: ["site/**"]
-
-concurrency:
-  group: deploy
-  cancel-in-progress: false
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      FULL: ${{ github.event_name == 'workflow_dispatch' }}
+      FULL: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -110,12 +103,12 @@ jobs:
         if: env.FULL == 'true'
         run: bash pipeline/make_tiles.sh
 
-      - name: Pick basemap month
+      - name: Pick basemap year
         if: env.FULL == 'true'
         id: month
-        run: echo "m=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+        run: echo "m=$(date -u +%Y)" >> "$GITHUB_OUTPUT"
 
-      # The basemap is re-cut once a month (or when asked); otherwise the cached copy is used.
+      # The basemap is re-cut once a year (or when asked); otherwise the saved copy is reused.
       - name: Cache basemap
         if: env.FULL == 'true'
         id: bm
@@ -127,53 +120,43 @@ jobs:
           key: basemap-${{ hashFiles('config.json') }}-${{ steps.month.outputs.m }}
 
       - name: Download basemap
+        id: bmfetch
         if: env.FULL == 'true' && (inputs.refresh_basemap || steps.bm.outputs.cache-hit != 'true')
-        run: bash pipeline/fetch_basemap.sh
+        run: |
+          bash pipeline/fetch_basemap.sh
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
 
       - name: Put the site together
         run: |
-          rm -rf dist && cp -r site dist
+          rm -rf dist dist-basemap && cp -r site dist
           mv dist/htaccess.txt dist/.htaccess
-          du -sh dist
-          ls -lh dist/data 2>/dev/null || true
+          mkdir -p dist-basemap/data
+          mv dist/data/basemap.pmtiles dist/data/basemap-build.txt dist-basemap/data/
+          du -sh dist dist-basemap
+          {
+            echo "## Files to upload"
+            echo ""
+            echo "- **site-update**: upload and extract in the subdomain's folder every time ($(du -sh dist | cut -f1))."
+            if [ "${{ steps.bmfetch.outputs.fresh }}" = "true" ] || [ "${{ inputs.include_basemap }}" = "true" ]; then
+              echo "- **basemap**: new this run. Upload and extract it too ($(du -sh dist-basemap | cut -f1), basemap build $(cat dist-basemap/data/basemap-build.txt))."
+            else
+              echo "- **basemap**: unchanged, so it is not included. The copy already on Bluehost is still current."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload to Bluehost
-        if: github.event_name == 'push' || inputs.deploy
-        env:
-          HOST: ${{ secrets.BLUEHOST_HOST }}
-          USER: ${{ secrets.BLUEHOST_USER }}
-          PASS: ${{ secrets.BLUEHOST_PASSWORD }}
-          REMOTE: ${{ secrets.BLUEHOST_PATH }}
-          PROTO: ${{ secrets.BLUEHOST_PROTOCOL || 'sftp' }}
-          PORT: ${{ secrets.BLUEHOST_PORT }}
-        run: |
-          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$PASS" ] || [ -z "$REMOTE" ]; then
-            echo "Bluehost login is not set up yet (repository Settings > Secrets). Skipping upload."
-            echo "Upload skipped: add the BLUEHOST_* secrets to publish automatically. The built site is in the 'site' download below." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
-          if [ "$PROTO" = "ftps" ]; then URL="ftp://$HOST:${PORT:-21}"; TLS="set ftp:ssl-force true; set ftp:ssl-protect-data true;"
-          else URL="sftp://$HOST:${PORT:-22}"; TLS="set sftp:auto-confirm yes;"; fi
-          # Page files: always uploaded. Data files (full builds only) are compared by size,
-          # so an unchanged basemap is not uploaded again.
-          EXCL="--exclude-glob data/*"
-          DATA=""
-          if [ "$FULL" = "true" ]; then
-            DATA="mirror -R --verbose --ignore-time --parallel=2 --exclude-glob *.json dist/data \"$REMOTE/data\"; mput -O \"$REMOTE/data\" dist/data/*.json;"
-          fi
-          lftp -u "$USER","$PASS" "$URL" -e "$TLS set net:max-retries 3; set net:timeout 60;
-            mkdir -p -f \"$REMOTE\";
-            mirror -R --verbose --parallel=4 $EXCL dist \"$REMOTE\";
-            $DATA
-            bye"
-          echo "Uploaded to $HOST:$REMOTE" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save the built site
-        if: env.FULL == 'true'
+      - name: Save the site files
         uses: actions/upload-artifact@v4
         with:
-          name: site
+          name: site-update
           path: dist/
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 30
+
+      - name: Save the basemap
+        if: steps.bmfetch.outputs.fresh == 'true' || inputs.include_basemap
+        uses: actions/upload-artifact@v4
+        with:
+          name: basemap
+          path: dist-basemap/
+          compression-level: 0
+          retention-days: 30

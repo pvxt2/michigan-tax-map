@@ -10,13 +10,13 @@ An interactive map of estimated property tax across Michigan. It works on phones
 - **Search** for a place by name.
 - **Sharing:** the web address keeps the current view, so links can be shared.
 
-The site is plain files with no server code. GitHub builds it and uploads it to Bluehost.
+The site is plain files with no server code. GitHub builds it, and you upload the result to Bluehost.
 
 ## How it works
 
 ```
 Treasury rates PDF ─┐
-State boundaries ───┼─► build on GitHub ─► site/ ─► upload to Bluehost
+State boundaries ───┼─► build on GitHub ─► download zip ─► upload to Bluehost
 Protomaps basemap ──┘
 ```
 
@@ -26,57 +26,53 @@ Protomaps basemap ──┘
 | 2 | `pipeline/parse_rates.py` | Reads Treasury's *Total Property Tax Rates in Michigan* PDF into a table |
 | 3 | `pipeline/build_layers.py` | Matches each rate row to its city or township, school district and village, and builds the map layers. It also writes a match report |
 | 4 | `pipeline/make_tiles.sh` | Packs the layers into one map file, `tax.pmtiles` |
-| 5 | `pipeline/fetch_basemap.sh` | Cuts Michigan out of the free Protomaps world map into `basemap.pmtiles` (once a month) |
+| 5 | `pipeline/fetch_basemap.sh` | Cuts Michigan out of the free Protomaps world map into `basemap.pmtiles` (once a year) |
 | 6 | `pipeline/vendor.sh` | Copies the map library (MapLibre) and label fonts into the site |
 
 The page itself is `site/index.html`, `site/app.js` (controls) and `site/style.js` (colors, zoom levels, road hierarchy).
 
-## One-time setup
+## Building
 
-### 1. Bluehost: make the subdomain
-
-1. In Bluehost, open **cPanel → Domains** and create the subdomain (for example `taxmap.yoursite.com`).
-2. Note its **document root**, the folder it serves from (for example `/home/youruser/taxmap.yoursite.com` or `/home/youruser/public_html/taxmap`).
-3. Make sure SSL is on for the subdomain (Bluehost does this automatically, but it can take a few minutes).
-
-### 2. Bluehost: a login GitHub can upload with
-
-Choose one of these:
-
-- **SSH/SFTP (recommended).** In cPanel, open **SSH Access** and turn it on. GitHub then uploads with your cPanel username and password.
-- **FTP account.** In cPanel, open **FTP Accounts** and create an account limited to the subdomain's folder. GitHub then uploads over encrypted FTP (FTPS).
-
-### 3. GitHub: add the Bluehost login as secrets
-
-In this repository, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
-
-| Secret | Value |
-|---|---|
-| `BLUEHOST_HOST` | your server name, as shown in cPanel (for example `box1234.bluehost.com`) or your domain |
-| `BLUEHOST_USER` | your cPanel username (SFTP) or the FTP account's full username |
-| `BLUEHOST_PASSWORD` | the matching password |
-| `BLUEHOST_PATH` | the subdomain's folder from step 1. For an FTP account limited to that folder, use `/` |
-| `BLUEHOST_PROTOCOL` | only if you chose FTP: `ftps` (leave it out for SFTP) |
-| `BLUEHOST_PORT` | only if Bluehost gives you a port other than 22 (SFTP) or 21 (FTP) |
-
-GitHub encrypts secrets, and nobody can read them back, including you.
-
-## Building and publishing
-
-1. Open the **Actions** tab, then **Build and deploy**.
+1. Open the **Actions** tab, then **Build site**.
 2. Click **Run workflow**, then **Run workflow** again.
 
 The first run takes longer, roughly 30–60 minutes, because it builds the mapping tools and the basemap. Later runs reuse both.
 
-When it finishes, the run page shows the **data match report**, and the site is live on your subdomain. If the Bluehost secrets aren't set yet, the run skips the upload. You can then download the finished site (**site** under Artifacts) and upload it yourself with FileZilla.
+When it finishes, the run page shows the **data match report** and, under **Artifacts**, one or two downloads:
 
-Changing a file in `site/` and committing it re-uploads just the page files within a minute or two. The data stays as it is.
+- **site-update** (about 20–50 MB): the page, the tax map file and everything else. You upload it every time.
+- **basemap** (a few hundred MB): the roads, water and place names. It is only included when it is new, which happens on the first run and then once a year. Tick **Include the basemap file** when starting a run if you ever need it again.
+
+GitHub never connects to your Bluehost account. You download the files and upload them yourself.
+
+## Publishing on Bluehost
+
+**First time: make the subdomain**
+
+1. In Bluehost, open **cPanel → Domains** and create the subdomain (for example `taxmap.yoursite.com`).
+2. Note its **document root**, the folder it serves from.
+3. Make sure SSL is on for the subdomain (Bluehost does this automatically, but it can take a few minutes).
+
+**Each time: upload**
+
+1. Download **site-update** (and **basemap** if the run has one) from the run page. Don't unzip them.
+2. In cPanel, open **File Manager** and go to the subdomain's folder.
+3. Click **Upload** and upload the zip file.
+4. Back in File Manager, right-click the zip, choose **Extract**, and extract into the same folder. Say yes to replacing the existing files.
+5. Delete the zip.
+6. Do the same with the basemap zip if you have one. It extracts into the `data` folder by itself.
+
+The site includes a hidden file, `.htaccess`, which stops Bluehost from compressing the map files (compression breaks them). To see it in File Manager, use **Settings → Show Hidden Files**.
+
+If File Manager refuses the large basemap zip, unzip it on your computer and upload `data/basemap.pmtiles` with [FileZilla](https://filezilla-project.org) instead, using your cPanel login. It goes in the subdomain folder's `data` folder.
+
+**Check it:** open the subdomain in a browser. If the map stays blank, check that `data/tax.pmtiles`, `data/basemap.pmtiles` and `.htaccess` are all in the subdomain folder.
 
 ## Every year: new rates
 
 1. Treasury posts the new *Total Property Tax Rates* report on its [millage rates page](https://www.michigan.gov/taxes/property/estimator/related/millage-rates).
 2. Copy the PDF's link into `rates_pdf_url` in `config.json` and change `year`.
-3. Commit the change, then run **Build and deploy**.
+3. Commit the change, run **Build site**, then upload **site-update** to Bluehost.
 
 ## The match report
 
