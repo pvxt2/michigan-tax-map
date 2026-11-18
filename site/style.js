@@ -74,7 +74,12 @@
     const add = (l) => layers.push(l);
 
     add({ id: "background", type: "background", paint: { "background-color": P.water } });
-    add({ id: "earth", type: "fill", source: "basemap", "source-layer": "earth", paint: { "fill-color": P.land } });
+    // Two basemap files: "overview" (z0-9, Michigan and neighbours) and "basemap" (z10+, a band
+    // around Michigan). Beyond the detailed band, the overview is shown overzoomed.
+    const POLY = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
+    add({ id: "earth-overview", type: "fill", source: "overview", "source-layer": "earth", paint: { "fill-color": P.land } });
+    add({ id: "water-overview-under", type: "fill", source: "overview", "source-layer": "water", minzoom: 10, filter: POLY, paint: { "fill-color": P.water } });
+    add({ id: "earth", type: "fill", source: "basemap", "source-layer": "earth", minzoom: 10, paint: { "fill-color": P.land } });
 
     // Tax colors, crossfaded by zoom tier.
     const fo = P.fillOpacity;
@@ -86,8 +91,8 @@
       paint: { "fill-color": fillColor(o.meta, o.type, P), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0, 10.6, fo] } });
 
     // Water above the tax colors, so Great Lakes and inland lakes read clearly.
-    add({ id: "water", type: "fill", source: "basemap", "source-layer": "water",
-      filter: ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]], paint: { "fill-color": P.water } });
+    add({ id: "water-overview", type: "fill", source: "overview", "source-layer": "water", maxzoom: 10, filter: POLY, paint: { "fill-color": P.water } });
+    add({ id: "water", type: "fill", source: "basemap", "source-layer": "water", minzoom: 10, filter: POLY, paint: { "fill-color": P.water } });
     add({ id: "rivers", type: "line", source: "basemap", "source-layer": "water", minzoom: 10,
       filter: ["all", ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], ["in", ["get", "kind_detail"], ["literal", ["river", "canal"]]]],
       paint: { "line-color": P.river, "line-width": exp([[10, 0.6], [14, 2], [16, 4]]) } });
@@ -115,9 +120,10 @@
         paint: { "line-color": P.casing, "line-width": exp(r.w.map(([z, w]) => [z, w + Math.min(2.5, 1 + w * 0.25)])), "line-opacity": fade(r.cz, 0.9) } });
     }
     for (const r of ROADS) {
-      add({ id: `road-${r.id}`, type: "line", source: "basemap", "source-layer": "roads", minzoom: r.z,
-        filter: r.f, layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": P.road[r.tone], "line-width": exp(r.w), "line-opacity": fade(r.z, r.op) } });
+      const line = { type: "line", "source-layer": "roads", filter: r.f, layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": P.road[r.tone], "line-width": exp(r.w), "line-opacity": fade(r.z, r.op) } };
+      if (r.z < 10) add(Object.assign({ id: `road-${r.id}-overview`, source: "overview", minzoom: r.z, maxzoom: 10 }, line));
+      add(Object.assign({ id: `road-${r.id}`, source: "basemap", minzoom: Math.max(r.z, 10) }, line));
     }
 
     // Selection highlight.
@@ -143,8 +149,9 @@
       layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-font": font("m"), "text-size": 11.5, "symbol-sort-key": 10 },
       paint: text() });
 
-    for (const [cls, z] of [["motorway", 7], ["trunk", 8], ["primary", 9]]) {
-      add({ id: `shield-${cls}`, type: "symbol", source: "basemap", "source-layer": "roads", minzoom: z,
+    for (const [cls, z, src, maxz] of [["motorway", 7, "overview", 10], ["trunk", 8, "overview", 10], ["primary", 9, "overview", 10],
+                                        ["motorway", 10, "basemap", 24], ["trunk", 10, "basemap", 24], ["primary", 10, "basemap", 24]]) {
+      add({ id: `shield-${cls}-${src}`, type: "symbol", source: src, "source-layer": "roads", minzoom: z, maxzoom: maxz,
         filter: ["all", kd(cls), notLink, ["has", "shield_text"]],
         layout: {
           "symbol-placement": "line", "symbol-spacing": cls === "motorway" ? 380 : 460,
@@ -164,7 +171,7 @@
     add({ id: "label-schools", type: "symbol", source: "tax", "source-layer": "school_labels", minzoom: 12,
       layout: { "text-field": ["get", "sdname"], "text-font": font("i"), "text-size": 11, "text-max-width": 8, "text-padding": 10 },
       paint: text({ "text-color": P.mut }) });
-    add({ id: "label-places-low", type: "symbol", source: "basemap", "source-layer": "places", minzoom: 5.5, maxzoom: 8.6,
+    add({ id: "label-places-low", type: "symbol", source: "overview", "source-layer": "places", minzoom: 5.5, maxzoom: 8.6,
       filter: ["==", ["get", "kind"], "locality"],
       layout: { "text-field": ["get", "name"], "text-font": font(), "text-size": ["interpolate", ["linear"], ["zoom"], 5.5, 10, 8.6, 12],
         "symbol-sort-key": ["-", 0, ["coalesce", ["get", "population"], 0]], "text-padding": 4 },
@@ -186,7 +193,9 @@
       version: 8,
       glyphs: base + "fonts/{fontstack}/{range}.pbf",
       sources: {
-        basemap: { type: "vector", url: "pmtiles://" + base + "data/basemap.pmtiles",
+        overview: { type: "vector", url: "pmtiles://" + base + "data/basemap-overview.pmtiles", maxzoom: 9,
+          attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>' },
+        basemap: { type: "vector", url: "pmtiles://" + base + "data/basemap.pmtiles", minzoom: 10,
           attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>' },
         tax: { type: "vector", url: "pmtiles://" + base + "data/tax.pmtiles",
           attribution: "Michigan Dept. of Treasury; Michigan Geographic Framework" },

@@ -26,7 +26,7 @@ Protomaps basemap ──┘
 | 2 | `pipeline/parse_rates.py` | Reads Treasury's *Total Property Tax Rates in Michigan* PDF (saved in `data/rates`) into a table |
 | 3 | `pipeline/build_layers.py` | Matches each rate row to its city or township, school district and village, and builds the map layers. It also writes a match report |
 | 4 | `pipeline/make_tiles.sh` | Packs the layers into one map file, `tax.pmtiles` |
-| 5 | `pipeline/fetch_basemap.sh` | Cuts Michigan out of the free Protomaps world map into `basemap.pmtiles` (once a year) |
+| 5 | `pipeline/fetch_basemap.sh` | Cuts two files from the free Protomaps world map (once a year): `basemap-overview.pmtiles` for the zoomed-out view of Michigan and its neighbours, and `basemap.pmtiles` with street detail for a band around Michigan, kept under 480 MB |
 | 6 | `pipeline/vendor.sh` | Copies the map library (MapLibre) and label fonts into the site |
 
 The page itself is `site/index.html`, `site/app.js` (controls) and `site/style.js` (colors, zoom levels, road hierarchy).
@@ -40,8 +40,8 @@ The first run takes longer, roughly 30–60 minutes, because it builds the mappi
 
 When it finishes, the run page shows the **data match report** and, under **Artifacts**, one or two downloads:
 
-- **site-update** (about 20–50 MB): the page, the tax map file and everything else. You upload it every time.
-- **basemap** (a few hundred MB): the roads, water and place names. It is only included when it is new, which happens on the first run and then once a year. Tick **Include the basemap file** when starting a run if you ever need it again.
+- **site-update** (under 100 MB): the page, the tax map file, the overview basemap and everything else. You upload it every time.
+- **basemap** (under 480 MB): street-level roads, water and place names for Michigan. It is only included when it is new, which happens on the first run and then once a year. Tick **Include the basemap file** when starting a run if you ever need it again.
 
 GitHub never connects to your Bluehost account. You download the files and upload them yourself.
 
@@ -64,9 +64,9 @@ GitHub never connects to your Bluehost account. You download the files and uploa
 
 The site includes a hidden file, `.htaccess`, which stops Bluehost from compressing the map files (compression breaks them). To see it in File Manager, use **Settings → Show Hidden Files**.
 
-If File Manager refuses the large basemap zip, unzip it on your computer and upload `data/basemap.pmtiles` with [FileZilla](https://filezilla-project.org) instead, using your cPanel login. It goes in the subdomain folder's `data` folder.
+Both zips stay under File Manager's 500 MB upload limit. If the street-level basemap would go over 480 MB, the build drops its most detailed zoom level to fit.
 
-**Check it:** open the subdomain in a browser. If the map stays blank, check that `data/tax.pmtiles`, `data/basemap.pmtiles` and `.htaccess` are all in the subdomain folder.
+**Check it:** open the subdomain in a browser. If the map stays blank, check that `data/tax.pmtiles`, `data/basemap-overview.pmtiles`, `data/basemap.pmtiles` and `.htaccess` are all in the subdomain folder.
 
 ## Every year: new rates
 
@@ -94,7 +94,7 @@ To fix a school-district mismatch by hand, add a line to `data/overrides.csv` wi
 |---|---|
 | `year`, `rates_pdf` | The rates report to use (a PDF saved in `data/rates`); `rates_pdf_url` is only a fallback |
 | `boundaries_service`, `boundary_layers` | Where the state boundaries come from |
-| `basemap.bbox`, `basemap.maxzoom` | Area and detail of the basemap. Zoom 14 shows every street. Zoom 15 roughly doubles the file size for little visible gain |
+| `basemap.bbox`, `basemap.maxzoom` | Area of the overview basemap, and the most detailed zoom of the street-level one (14 shows every street; the build lowers it if the file would pass 480 MB) |
 | `default_value` | Property value shown on first visit |
 | `sliver_m2` | Boundary slivers smaller than this (square metres) are ignored |
 

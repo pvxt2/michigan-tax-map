@@ -196,6 +196,10 @@ def main():
     counties = counties.dissolve(by=["ccode", "cname"], as_index=False)[["ccode", "cname", "geometry"]]
     report.append(f"Counties: {len(counties)}")
 
+    # Area for the detailed basemap: Michigan plus a 6 km band (see fetch_basemap.sh).
+    region = counties.geometry.union_all().buffer(6000).simplify(500)
+    gpd.GeoDataFrame(geometry=[region], crs=METRIC).to_crs(4326).to_file(ROOT / "work" / "region.geojson", driver="GeoJSON")
+
     # Cities and townships, split at county lines.
     mcd = polys(load("mcd"))
     m_name, m_type = col(mcd, "NAME"), col(mcd, "TYPE")

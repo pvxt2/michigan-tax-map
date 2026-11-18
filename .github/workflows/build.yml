@@ -126,8 +126,9 @@ jobs:
         with:
           path: |
             site/data/basemap.pmtiles
+            site/data/basemap-overview.pmtiles
             site/data/basemap-build.txt
-          key: basemap-${{ hashFiles('config.json') }}-${{ steps.month.outputs.m }}
+          key: basemap-v2-${{ hashFiles('config.json', 'pipeline/fetch_basemap.sh') }}-${{ steps.month.outputs.m }}
 
       - name: Download basemap
         id: bmfetch
@@ -146,7 +147,7 @@ jobs:
           {
             echo "## Files to upload"
             echo ""
-            echo "- **site-update**: upload and extract in the subdomain's folder every time ($(du -sh dist | cut -f1))."
+            echo "- **site-update**: upload and extract in the subdomain's folder every time ($(du -sh dist | cut -f1), includes the small overview basemap)."
             if [ "${{ steps.bmfetch.outputs.fresh }}" = "true" ] || [ "${{ inputs.include_basemap }}" = "true" ]; then
               echo "- **basemap**: new this run. Upload and extract it too ($(du -sh dist-basemap | cut -f1), basemap build $(cat dist-basemap/data/basemap-build.txt))."
             else
