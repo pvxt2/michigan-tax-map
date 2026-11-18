@@ -194,7 +194,7 @@
     $("lo").textContent = usd.format(tax(d[0]));
     $("mid").textContent = usd.format(tax(d[1]));
     $("hi").textContent = usd.format(tax(d[2]));
-    const fields = STYLE_HELPERS.labelFields(S.type, S.value, STYLE_HELPERS.PALETTES[theme()]);
+    const fields = STYLE_HELPERS.labelFields(S.type, S.value);
     for (const [id, f] of Object.entries(fields)) if (map.getLayer(id)) map.setLayoutProperty(id, "text-field", f);
     renderDetail();
     renderSummary();

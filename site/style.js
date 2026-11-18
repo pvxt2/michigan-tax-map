@@ -64,16 +64,10 @@
     return ["concat", "$", ["number-format", ["round", ["*", ["get", type], sevPerMill]], { "max-fraction-digits": 0 }]];
   }
 
-  // Name with the typical tax underneath (counties, cities, townships), and the tax-area amounts.
-  function nameWithTax(name, type, value, P) {
-    return ["case", ["has", type],
-      ["format", name, { "text-color": P.mut }, "\n", {}, taxLabel(type, value), { "font-scale": 1.12, "text-color": P.ink }],
-      ["format", name, {}]];
-  }
-
-  function labelFields(type, value, P) {
+  // Only the tax-area amounts carry dollar values; county and city/township labels are names only.
+  function labelFields(type, value) {
     return {
-      "label-counties": nameWithTax(["upcase", ["get", "cname"]], type, value, P),
+      "label-counties": ["upcase", ["get", "cname"]],
       "label-munis": ["get", "uname"],
       "label-areas": taxLabel(type, value),
     };
@@ -181,7 +175,7 @@
     }
 
     // Labels are placed top-down: later layers win when labels collide, so the tax amounts come last.
-    const lf = labelFields(o.type, o.value, P);
+    const lf = labelFields(o.type, o.value);
     add({ id: "label-schools", type: "symbol", source: "tax", "source-layer": "school_labels", minzoom: 12,
       layout: { "text-field": ["get", "sdname"], "text-font": font("i"), "text-size": 11, "text-max-width": 8, "text-padding": 10 },
       paint: text({ "text-color": P.mut }) });
@@ -197,7 +191,7 @@
     add({ id: "label-counties", type: "symbol", source: "tax", "source-layer": "county_labels", minzoom: 4.5, maxzoom: 9,
       layout: { "text-field": lf["label-counties"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 5, 9.5, 8.5, 13.5],
         "text-letter-spacing": 0.04, "text-padding": 2, "symbol-sort-key": 0 },
-      paint: text({ "text-halo-width": 1.8, "text-opacity": ["interpolate", ["linear"], ["zoom"], 8.2, 1, 9, 0] }) });
+      paint: text({ "text-color": P.mut, "text-halo-width": 1.8, "text-opacity": ["interpolate", ["linear"], ["zoom"], 8.2, 1, 9, 0] }) });
     add({ id: "label-munis", type: "symbol", source: "tax", "source-layer": "muni_labels", minzoom: 8.6, maxzoom: 11,
       layout: { "text-field": lf["label-munis"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 8.6, 11, 11, 14],
         "text-max-width": 8, "symbol-sort-key": ["get", "r"], "text-padding": 3 },
