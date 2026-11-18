@@ -96,7 +96,10 @@ jobs:
 
       - name: Show match report
         if: always() && env.FULL == 'true'
-        run: cat work/qa/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "No report" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          cat work/qa/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "No report" >> "$GITHUB_STEP_SUMMARY"
+          # Also print the detail files into the log, so they can be read without downloading.
+          for f in work/qa/*.csv; do [ -f "$f" ] && { echo "===== $f"; head -n 200 "$f"; }; done || true
 
       - name: Save match report files
         if: always() && env.FULL == 'true'
