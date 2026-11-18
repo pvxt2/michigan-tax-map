@@ -63,6 +63,21 @@
     return ["number-format", ["*", ["get", type], sevPerMill], { currency: "USD", "max-fraction-digits": 0, "min-fraction-digits": 0 }];
   }
 
+  // Name with the typical tax underneath (counties, cities, townships), and the tax-area amounts.
+  function nameWithTax(name, type, value, P) {
+    return ["case", ["has", type],
+      ["format", name, { "text-color": P.mut }, "\n", {}, taxLabel(type, value), { "font-scale": 1.12, "text-color": P.ink }],
+      ["format", name, {}]];
+  }
+
+  function labelFields(type, value, P) {
+    return {
+      "label-counties": nameWithTax(["upcase", ["get", "cname"]], type, value, P),
+      "label-munis": nameWithTax(["get", "uname"], type, value, P),
+      "label-areas": taxLabel(type, value),
+    };
+  }
+
   function hlFilter(hl, layer) {
     return ["==", ["get", "id"], hl && hl.layer === layer ? hl.id : -1];
   }
@@ -164,10 +179,8 @@
         paint: { "text-color": ["match", ["get", "network"], "US:I", "#ffffff", "#1c2b2e"] } });
     }
 
-    add({ id: "label-areas", type: "symbol", source: "tax", "source-layer": "area_labels", minzoom: 11.5,
-      layout: { "text-field": taxLabel(o.type, o.value), "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 11.5, 10.5, 15, 13],
-        "symbol-sort-key": ["get", "r"], "text-padding": 6 },
-      paint: text({ "text-opacity": fade(11.5, 1) }) });
+    // Labels are placed top-down: later layers win when labels collide, so the tax amounts come last.
+    const lf = labelFields(o.type, o.value, P);
     add({ id: "label-schools", type: "symbol", source: "tax", "source-layer": "school_labels", minzoom: 12,
       layout: { "text-field": ["get", "sdname"], "text-font": font("i"), "text-size": 11, "text-max-width": 8, "text-padding": 10 },
       paint: text({ "text-color": P.mut }) });
@@ -176,18 +189,23 @@
       layout: { "text-field": ["get", "name"], "text-font": font(), "text-size": ["interpolate", ["linear"], ["zoom"], 5.5, 10, 8.6, 12],
         "symbol-sort-key": ["-", 0, ["coalesce", ["get", "population"], 0]], "text-padding": 4 },
       paint: text() });
-    add({ id: "label-munis", type: "symbol", source: "tax", "source-layer": "muni_labels", minzoom: 8.6, maxzoom: 11.5,
-      layout: { "text-field": ["get", "uname"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 8.6, 10.5, 11.5, 13],
-        "text-max-width": 7, "symbol-sort-key": ["get", "r"], "text-padding": 4 },
-      paint: text() });
     add({ id: "label-places-high", type: "symbol", source: "basemap", "source-layer": "places", minzoom: 11,
       filter: ["==", ["get", "kind"], "locality"],
       layout: { "text-field": ["get", "name"], "text-font": font("m"), "text-size": 13, "symbol-sort-key": ["-", 0, ["coalesce", ["get", "population"], 0]] },
       paint: text() });
     add({ id: "label-counties", type: "symbol", source: "tax", "source-layer": "county_labels", minzoom: 4.5, maxzoom: 9,
-      layout: { "text-field": ["upcase", ["get", "cname"]], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 5, 9, 8.5, 13],
-        "text-letter-spacing": 0.08, "text-padding": 2, "symbol-sort-key": 0 },
-      paint: text({ "text-color": P.mut, "text-opacity": ["interpolate", ["linear"], ["zoom"], 8.2, 1, 9, 0] }) });
+      layout: { "text-field": lf["label-counties"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 5, 9.5, 8.5, 13.5],
+        "text-letter-spacing": 0.04, "text-padding": 2, "symbol-sort-key": 0 },
+      paint: text({ "text-halo-width": 1.8, "text-opacity": ["interpolate", ["linear"], ["zoom"], 8.2, 1, 9, 0] }) });
+    add({ id: "label-munis", type: "symbol", source: "tax", "source-layer": "muni_labels", minzoom: 8.6, maxzoom: 11,
+      layout: { "text-field": lf["label-munis"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 8.6, 11, 11, 14],
+        "text-max-width": 8, "symbol-sort-key": ["get", "r"], "text-padding": 3 },
+      paint: text({ "text-halo-width": 1.8 }) });
+    add({ id: "label-areas", type: "symbol", source: "tax", "source-layer": "area_labels", minzoom: 10.6,
+      layout: { "text-field": lf["label-areas"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 10.6, 12.5, 15, 15.5],
+        "icon-image": `tag-${o.theme === "dark" ? "dark" : "light"}`, "icon-text-fit": "both", "icon-text-fit-padding": [2, 6, 2, 6],
+        "symbol-sort-key": ["get", "r"], "text-padding": 4 },
+      paint: { "text-color": P.ink, "text-opacity": fade(10.6, 1), "icon-opacity": fade(10.6, 1) } });
 
     return {
       version: 8,
@@ -204,5 +222,5 @@
     };
   };
 
-  window.STYLE_HELPERS = { fillColor, taxLabel, hlFilter, PALETTES };
+  window.STYLE_HELPERS = { fillColor, taxLabel, labelFields, hlFilter, PALETTES };
 })();

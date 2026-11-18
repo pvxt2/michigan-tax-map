@@ -54,6 +54,18 @@
 
   // Route shields are drawn here rather than loaded from a sprite file.
   map.on("styleimagemissing", (e) => {
+    if (/^tag-/.test(e.id) && !map.hasImage(e.id)) {
+      // Rounded tag behind the tax amounts, so they read on any fill color.
+      const dark = e.id === "tag-dark", w = 40, h = 32, c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const g = c.getContext("2d");
+      g.fillStyle = dark ? "rgba(27,35,38,0.92)" : "rgba(255,255,255,0.94)";
+      g.strokeStyle = dark ? "rgba(230,238,238,0.35)" : "rgba(28,43,46,0.35)";
+      g.lineWidth = 2;
+      g.beginPath(); if (g.roundRect) g.roundRect(2, 2, w - 4, h - 4, 9); else g.rect(2, 2, w - 4, h - 4); g.fill(); g.stroke();
+      map.addImage(e.id, g.getImageData(0, 0, w, h), { pixelRatio: 2, stretchX: [[12, 28]], stretchY: [[11, 21]], content: [6, 5, 34, 27] });
+      return;
+    }
     if (!/^sh-/.test(e.id) || map.hasImage(e.id)) return;
     const r = 2, w = 48, h = 40, c = document.createElement("canvas");
     c.width = w; c.height = h;
@@ -170,7 +182,8 @@
     $("lo").textContent = usd.format(tax(d[0]));
     $("mid").textContent = usd.format(tax(d[1]));
     $("hi").textContent = usd.format(tax(d[2]));
-    if (map.getLayer("label-areas")) map.setLayoutProperty("label-areas", "text-field", STYLE_HELPERS.taxLabel(S.type, S.value));
+    const fields = STYLE_HELPERS.labelFields(S.type, S.value, STYLE_HELPERS.PALETTES[theme()]);
+    for (const [id, f] of Object.entries(fields)) if (map.getLayer(id)) map.setLayoutProperty(id, "text-field", f);
     renderDetail();
     renderSummary();
   }
