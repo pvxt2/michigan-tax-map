@@ -56,7 +56,10 @@ UNIT_WORDS = {"CHARTER", "TOWNSHIP", "TWP", "CITY", "OF", "THE", "VILLAGE"}
 
 
 def unit_norm(s):
-    return " ".join(w for w in norm(s).split() if w not in UNIT_WORDS)
+    words = norm(s).split()
+    if words and words[-1] in ("CIT", "CI"):  # name cut off in the report, e.g. "... Village Cit"
+        words = words[:-1]
+    return " ".join(w for w in words if w not in UNIT_WORDS)
 
 
 def school_score(label, sd_name):
@@ -176,7 +179,7 @@ def main():
     SITE_DATA.mkdir(parents=True, exist_ok=True)
     report = []
 
-    rates = pd.read_csv(ROOT / "work" / "rates.csv", dtype=str)
+    rates = pd.read_csv(ROOT / "work" / "rates.csv", dtype=str, keep_default_na=False)
     for c in ("pre", "nh"):
         rates[c] = rates[c].astype(float)
     rates["is_village"] = rates["is_village"].astype(int)
@@ -304,11 +307,19 @@ def main():
             vg = grp[grp.vname == v]
             vd = vg.groupby("dcode").agg(sdname=("sdname", "first"), m2=("m2", "sum"))
             mine = []
+            nv = norm(v)
             for ri, r in vrows.iterrows():
+                rv = norm(r.get("village", ""))
+                if rv:  # village and school come as separate columns
+                    if rv == nv or (len(rv) >= 6 and (nv.startswith(rv) or rv.startswith(nv))):
+                        r = r.copy()
+                        r["school_label"] = r.get("school", "")
+                        mine.append((ri, r))
+                    continue
                 rest = norm(r.label)[len("VILLAGE OF "):]
-                if rest.startswith(norm(v)):
+                if rest.startswith(nv):
                     r = r.copy()
-                    r["school_label"] = rest[len(norm(v)):].strip()
+                    r["school_label"] = rest[len(nv):].strip()
                     mine.append((ri, r))
             if not mine:
                 continue

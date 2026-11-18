@@ -30,13 +30,14 @@ SKIP = ("See the disclaimers", "TOTAL PROPERTY TAX RATES", "Total Millage", "Pri
         "School District", "Commercial", "Industrial")
 
 FIELDS = ["county_code", "county_name", "unit_code", "unit_name", "unit_type", "is_village",
-          "label", "pre", "nh", "c3", "c4", "c5", "c6", "dup"]
+          "village", "school", "label", "pre", "nh", "c3", "c4", "c5", "c6", "dup"]
 
 
 def pdf_lines(path):
-    """Text lines from the PDF. Prefers pdftotext (fast); falls back to pdfplumber."""
+    """Text lines from the PDF. Uses pdftotext in layout mode, which keeps each row on one line
+    with wide gaps between columns; falls back to pdfplumber."""
     try:
-        txt = subprocess.run(["pdftotext", "-raw", str(path), "-"], check=True,
+        txt = subprocess.run(["pdftotext", "-layout", str(path), "-"], check=True,
                              capture_output=True, text=True).stdout
         return txt.splitlines()
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -50,7 +51,8 @@ def pdf_lines(path):
 
 def unit_type(name):
     n = name.strip().lower()
-    if n.endswith(" city") or n.startswith("city of "):
+    # Long names are cut off in the report, e.g. "Grosse Pointe Shores Village Cit".
+    if re.search(r"\scit(y)?$", n) or n.startswith("city of "):
         return "C"
     if n.endswith(" twp") or n.endswith(" township") or "charter" in n:
         return "T"
@@ -61,7 +63,8 @@ def parse_lines(lines):
     rows, county, unit = [], None, None
     seen = set()
     for raw in lines:
-        line = " ".join(raw.replace(" ", " ").split())
+        raw = raw.replace("\u00a0", " ").rstrip()
+        line = " ".join(raw.split())
         if not line:
             continue
         t = TAIL.search(line)
@@ -81,13 +84,22 @@ def parse_lines(lines):
             if label.upper().startswith("TR-") or label.upper().startswith("TR "):
                 continue
             is_vil = label.upper().startswith("VILLAGE OF ")
+            # In layout text the village name and the school name are separated by a wide gap.
+            rt = TAIL.search(raw)
+            parts = re.split(r"\s{2,}", raw[:rt.start()].strip()) if rt else [label]
+            village, school = "", label
+            if is_vil:
+                if len(parts) >= 2:
+                    village, school = parts[0][len("VILLAGE OF "):].strip(), " ".join(parts[1:]).strip()
+                else:
+                    village, school = label[len("VILLAGE OF "):].strip(), ""
             key = (unit["code"], label.upper())
             dup = key in seen
             seen.add(key)
             rows.append({
                 "county_code": unit["code"][:2], "county_name": county or "",
                 "unit_code": unit["code"], "unit_name": unit["name"], "unit_type": unit["type"],
-                "is_village": int(is_vil), "label": label,
+                "is_village": int(is_vil), "village": village, "school": school, "label": label,
                 "pre": nums[0], "nh": nums[1], "c3": nums[2], "c4": nums[3], "c5": nums[4], "c6": nums[5],
                 "dup": int(dup),
             })

@@ -23,7 +23,7 @@ Protomaps basemap ──┘
 | Step | Script | What it does |
 |---|---|---|
 | 1 | `pipeline/fetch_boundaries.py` | Downloads counties, cities and townships, villages and school districts from the State of Michigan's map service |
-| 2 | `pipeline/parse_rates.py` | Reads Treasury's *Total Property Tax Rates in Michigan* PDF into a table |
+| 2 | `pipeline/parse_rates.py` | Reads Treasury's *Total Property Tax Rates in Michigan* PDF (saved in `data/rates`) into a table |
 | 3 | `pipeline/build_layers.py` | Matches each rate row to its city or township, school district and village, and builds the map layers. It also writes a match report |
 | 4 | `pipeline/make_tiles.sh` | Packs the layers into one map file, `tax.pmtiles` |
 | 5 | `pipeline/fetch_basemap.sh` | Cuts Michigan out of the free Protomaps world map into `basemap.pmtiles` (once a year) |
@@ -70,9 +70,12 @@ If File Manager refuses the large basemap zip, unzip it on your computer and upl
 
 ## Every year: new rates
 
-1. Treasury posts the new *Total Property Tax Rates* report on its [millage rates page](https://www.michigan.gov/taxes/property/estimator/related/millage-rates).
-2. Copy the PDF's link into `rates_pdf_url` in `config.json` and change `year`.
-3. Commit the change, run **Build site**, then upload **site-update** to Bluehost.
+1. Download the new *Total Property Tax Rates* report from Treasury's [millage rates page](https://www.michigan.gov/taxes/property/estimator/related/millage-rates).
+2. In this repository, open the `data/rates` folder, choose **Add file → Upload files**, and upload it named for its year (for example `2026.pdf`).
+3. In `config.json`, change `year` and `rates_pdf` to match (for example `"year": 2026` and `"rates_pdf": "data/rates/2026.pdf"`).
+4. Run **Build site**, then upload **site-update** to Bluehost.
+
+The build reads the PDF saved in the repository, because michigan.gov doesn't reliably allow automated downloads. It only falls back to downloading `rates_pdf_url` when no saved file exists.
 
 ## The match report
 
@@ -89,7 +92,7 @@ To fix a school-district mismatch by hand, add a line to `data/overrides.csv` wi
 
 | Setting | Meaning |
 |---|---|
-| `year`, `rates_pdf_url` | The rates report to use |
+| `year`, `rates_pdf` | The rates report to use (a PDF saved in `data/rates`); `rates_pdf_url` is only a fallback |
 | `boundaries_service`, `boundary_layers` | Where the state boundaries come from |
 | `basemap.bbox`, `basemap.maxzoom` | Area and detail of the basemap. Zoom 14 shows every street. Zoom 15 roughly doubles the file size for little visible gain |
 | `default_value` | Property value shown on first visit |

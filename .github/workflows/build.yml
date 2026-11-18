@@ -47,7 +47,7 @@ jobs:
       - name: Cache tippecanoe
         if: env.FULL == 'true'
         id: tip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/tippecanoe-bin
           key: tippecanoe-${{ runner.os }}-v2
@@ -75,12 +75,19 @@ jobs:
         if: env.FULL == 'true'
         run: python pipeline/fetch_boundaries.py
 
-      - name: Download and read the Treasury rates report
+      - name: Read the Treasury rates report
         if: env.FULL == 'true'
         run: |
-          URL=$(python -c "import json;print(json.load(open('config.json'))['rates_pdf_url'])")
           mkdir -p work
-          curl -fsSL -A "Mozilla/5.0 (michigan-tax-map build)" "$URL" -o work/rates.pdf
+          PDF=$(python -c "import json;print(json.load(open('config.json')).get('rates_pdf',''))")
+          if [ -n "$PDF" ] && [ -f "$PDF" ]; then
+            echo "Using $PDF from the repository"
+            cp "$PDF" work/rates.pdf
+          else
+            URL=$(python -c "import json;print(json.load(open('config.json'))['rates_pdf_url'])")
+            echo "No saved PDF; downloading $URL"
+            curl -fsSL -A "Mozilla/5.0 (michigan-tax-map build)" "$URL" -o work/rates.pdf
+          fi
           python pipeline/parse_rates.py work/rates.pdf work/rates.csv
 
       - name: Match rates to boundaries
@@ -93,7 +100,7 @@ jobs:
 
       - name: Save match report files
         if: always() && env.FULL == 'true'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: match-report
           path: work/qa/
@@ -112,7 +119,7 @@ jobs:
       - name: Cache basemap
         if: env.FULL == 'true'
         id: bm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             site/data/basemap.pmtiles
@@ -145,7 +152,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save the site files
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: site-update
           path: dist/
@@ -154,7 +161,7 @@ jobs:
 
       - name: Save the basemap
         if: steps.bmfetch.outputs.fresh == 'true' || inputs.include_basemap
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: basemap
           path: dist-basemap/
