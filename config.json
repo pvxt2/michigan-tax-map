@@ -1,0 +1,17 @@
+{
+  "year": 2025,
+  "rates_pdf_url": "https://www.michigan.gov/taxes/-/media/Project/Websites/taxes/4029/Total-Rates-Reports/2025-Total-Rates.pdf?rev=82b0724ebd0a4858a6e34184f41639b1&hash=419148EB1EA3767F32068FAAEBF73114",
+  "boundaries_service": "https://gisagocss.state.mi.us/arcgis/rest/services/OpenData/michigan_geographic_framework/MapServer",
+  "boundary_layers": {
+    "counties": 0,
+    "mcd": 2,
+    "villages": 3,
+    "schools": 10
+  },
+  "basemap": {
+    "bbox": [-90.6, 41.5, -82.0, 48.4],
+    "maxzoom": 14
+  },
+  "default_value": 350000,
+  "sliver_m2": 40000
+}

@@ -1,0 +1,39 @@
+# Copied to .htaccess when the site is built. Bluehost runs Apache, which reads this file.
+
+# Map-tile files are read in pieces (HTTP range requests). Compressing them breaks that.
+<IfModule mod_deflate.c>
+  SetEnvIfNoCase Request_URI "\.pmtiles$" no-gzip dont-vary
+</IfModule>
+<IfModule mod_brotli.c>
+  SetEnvIfNoCase Request_URI "\.pmtiles$" no-brotli
+</IfModule>
+
+AddType application/octet-stream .pmtiles
+AddType application/x-protobuf .pbf
+AddType application/json .json
+
+<IfModule mod_headers.c>
+  # Tile files keep their name between yearly updates, so browsers check for a newer copy each visit.
+  <FilesMatch "\.pmtiles$">
+    Header set Cache-Control "no-cache"
+    Header set Accept-Ranges "bytes"
+  </FilesMatch>
+  <FilesMatch "\.(pbf)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+  <FilesMatch "\.(js|css|json|html)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Send visitors to the https address.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+Options -Indexes

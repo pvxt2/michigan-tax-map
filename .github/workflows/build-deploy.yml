@@ -1,0 +1,179 @@
+name: Build and deploy
+
+# Full build (data + map tiles + site): run it by hand from the Actions tab.
+# Pushing a change to the site/ folder re-uploads just the page files; the data stays as it is.
+on:
+  workflow_dispatch:
+    inputs:
+      refresh_basemap:
+        description: "Download a fresh basemap (otherwise this month's cached copy is reused)"
+        type: boolean
+        default: false
+      deploy:
+        description: "Upload to Bluehost when the build finishes"
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths: ["site/**"]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      FULL: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copy map libraries and fonts into the site
+        run: bash pipeline/vendor.sh
+
+      - uses: actions/setup-python@v5
+        if: env.FULL == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install build tools
+        if: env.FULL == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils libsqlite3-dev zlib1g-dev build-essential
+          pip install -q -r pipeline/requirements.txt
+
+      - name: Cache tippecanoe
+        if: env.FULL == 'true'
+        id: tip
+        uses: actions/cache@v4
+        with:
+          path: ~/tippecanoe-bin
+          key: tippecanoe-${{ runner.os }}-v2
+
+      - name: Build tippecanoe
+        if: env.FULL == 'true' && steps.tip.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          make -C /tmp/tippecanoe -j"$(nproc)"
+          mkdir -p ~/tippecanoe-bin
+          cp /tmp/tippecanoe/tippecanoe /tmp/tippecanoe/tile-join ~/tippecanoe-bin/
+
+      - name: Install pmtiles command-line tool
+        if: env.FULL == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$HOME/tippecanoe-bin" >> "$GITHUB_PATH"
+          gh release download -R protomaps/go-pmtiles --pattern '*Linux_x86_64.tar.gz' -D /tmp/pmt
+          tar -xzf /tmp/pmt/*.tar.gz -C /tmp/pmt
+          sudo install /tmp/pmt/pmtiles /usr/local/bin/pmtiles
+          pmtiles version || true
+
+      - name: Download boundaries
+        if: env.FULL == 'true'
+        run: python pipeline/fetch_boundaries.py
+
+      - name: Download and read the Treasury rates report
+        if: env.FULL == 'true'
+        run: |
+          URL=$(python -c "import json;print(json.load(open('config.json'))['rates_pdf_url'])")
+          mkdir -p work
+          curl -fsSL -A "Mozilla/5.0 (michigan-tax-map build)" "$URL" -o work/rates.pdf
+          python pipeline/parse_rates.py work/rates.pdf work/rates.csv
+
+      - name: Match rates to boundaries
+        if: env.FULL == 'true'
+        run: python pipeline/build_layers.py
+
+      - name: Show match report
+        if: always() && env.FULL == 'true'
+        run: cat work/qa/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "No report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save match report files
+        if: always() && env.FULL == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: match-report
+          path: work/qa/
+          if-no-files-found: ignore
+
+      - name: Make tax map tiles
+        if: env.FULL == 'true'
+        run: bash pipeline/make_tiles.sh
+
+      - name: Pick basemap month
+        if: env.FULL == 'true'
+        id: month
+        run: echo "m=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      # The basemap is re-cut once a month (or when asked); otherwise the cached copy is used.
+      - name: Cache basemap
+        if: env.FULL == 'true'
+        id: bm
+        uses: actions/cache@v4
+        with:
+          path: |
+            site/data/basemap.pmtiles
+            site/data/basemap-build.txt
+          key: basemap-${{ hashFiles('config.json') }}-${{ steps.month.outputs.m }}
+
+      - name: Download basemap
+        if: env.FULL == 'true' && (inputs.refresh_basemap || steps.bm.outputs.cache-hit != 'true')
+        run: bash pipeline/fetch_basemap.sh
+
+      - name: Put the site together
+        run: |
+          rm -rf dist && cp -r site dist
+          mv dist/htaccess.txt dist/.htaccess
+          du -sh dist
+          ls -lh dist/data 2>/dev/null || true
+
+      - name: Upload to Bluehost
+        if: github.event_name == 'push' || inputs.deploy
+        env:
+          HOST: ${{ secrets.BLUEHOST_HOST }}
+          USER: ${{ secrets.BLUEHOST_USER }}
+          PASS: ${{ secrets.BLUEHOST_PASSWORD }}
+          REMOTE: ${{ secrets.BLUEHOST_PATH }}
+          PROTO: ${{ secrets.BLUEHOST_PROTOCOL || 'sftp' }}
+          PORT: ${{ secrets.BLUEHOST_PORT }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$PASS" ] || [ -z "$REMOTE" ]; then
+            echo "Bluehost login is not set up yet (repository Settings > Secrets). Skipping upload."
+            echo "Upload skipped: add the BLUEHOST_* secrets to publish automatically. The built site is in the 'site' download below." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          if [ "$PROTO" = "ftps" ]; then URL="ftp://$HOST:${PORT:-21}"; TLS="set ftp:ssl-force true; set ftp:ssl-protect-data true;"
+          else URL="sftp://$HOST:${PORT:-22}"; TLS="set sftp:auto-confirm yes;"; fi
+          # Page files: always uploaded. Data files (full builds only) are compared by size,
+          # so an unchanged basemap is not uploaded again.
+          EXCL="--exclude-glob data/*"
+          DATA=""
+          if [ "$FULL" = "true" ]; then
+            DATA="mirror -R --verbose --ignore-time --parallel=2 --exclude-glob *.json dist/data \"$REMOTE/data\"; mput -O \"$REMOTE/data\" dist/data/*.json;"
+          fi
+          lftp -u "$USER","$PASS" "$URL" -e "$TLS set net:max-retries 3; set net:timeout 60;
+            mkdir -p -f \"$REMOTE\";
+            mirror -R --verbose --parallel=4 $EXCL dist \"$REMOTE\";
+            $DATA
+            bye"
+          echo "Uploaded to $HOST:$REMOTE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the built site
+        if: env.FULL == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist/
+          include-hidden-files: true
+          retention-days: 7

@@ -1,0 +1,7 @@
+work/
+dist/
+site/data/
+site/vendor/
+site/fonts/
+__pycache__/
+*.pyc

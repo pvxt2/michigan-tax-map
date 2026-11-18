@@ -1,0 +1,5 @@
+# Manual matches for Treasury rows the build could not match to a school district.
+# unit_code: the 6-digit city/township code in the Treasury report (e.g. 471010 = Brighton Twp)
+# label: the school name exactly as the report prints it (e.g. HURON VALLEY SCHOOLS)
+# dcode: the school district code (DCODE) from the state's School Districts layer (e.g. 63220)
+unit_code,label,dcode

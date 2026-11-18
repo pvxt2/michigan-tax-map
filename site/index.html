@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Michigan Property Tax Map</title>
+<meta name="description" content="Estimate annual property tax anywhere in Michigan. Zoom from counties to each city, township, village and school district, using the state's official millage rates.">
+<meta name="theme-color" content="#0e6a73">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e6a73'/%3E%3Cpath d='M8 23V10l5 6 5-6v13M22 10v13' stroke='white' stroke-width='2.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <aside id="aside" class="collapsed">
+    <button id="sheetH" class="sheet-h" type="button" aria-expanded="false" aria-controls="aside"><span id="shSum">Property value — tap for controls</span></button>
+
+    <header>
+      <h1>Michigan property tax map</h1>
+      <p class="sub"><span id="yr">2025</span> millage rates for every county, city, township, village and school district</p>
+    </header>
+
+    <div class="search">
+      <label class="t" for="q">Find a place</label>
+      <input id="q" type="search" placeholder="City, township, village, county or school district" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="res" aria-autocomplete="list">
+      <ul id="res" role="listbox" hidden></ul>
+    </div>
+
+    <div>
+      <label class="t" for="num">Property value</label>
+      <div class="big" id="val"></div>
+      <label class="num" for="num"><span>$</span><input type="number" id="num" min="0" step="1000" inputmode="numeric"></label>
+      <input type="range" id="slider" min="50000" max="1500000" step="5000" aria-label="Property value slider">
+      <div class="row mut"><span>SEV (½ of value)</span><b id="sev"></b></div>
+    </div>
+
+    <div>
+      <span class="t" id="rtL">Rate type</span>
+      <div class="seg" role="group" aria-labelledby="rtL">
+        <button id="bH" class="on" type="button" aria-pressed="true">Homestead</button>
+        <button id="bN" type="button" aria-pressed="false">Non-homestead</button>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="t">Annual tax</span>
+      <div class="bar"></div>
+      <div class="ends"><span id="lo"></span><span id="mid"></span><span id="hi"></span></div>
+      <p class="note" id="tier"></p>
+    </div>
+
+    <div id="detail" aria-live="polite"><span class="mut">Hover or tap an area to see its breakdown.</span></div>
+
+    <p class="note">Tax = SEV × total mills ÷ 1,000, using the state's total rates without special assessments. Taxable value is assumed equal to SEV. Zoomed out, counties and townships show the area-weighted average of the tax areas inside them; zoom in for each school district and village. Dashed outlines are villages. Transfer (“TR-”) districts are left out. A * marks areas where the state lists a second rate for the same district.</p>
+
+    <div class="src">
+      <span class="t">Sources</span>
+      <ul>
+        <li><b>Millage rates:</b> State of Michigan, Department of Treasury, <i><span id="yr2">2025</span> Total Property Tax Rates in Michigan</i>.</li>
+        <li><b>Boundaries:</b> Michigan Geographic Framework, State of Michigan, via the Michigan GIS Open Data portal: Counties, Minor Civil Divisions (cities and townships), Villages and School Districts. Shapes are simplified for display.</li>
+        <li><b>Base map and roads:</b> <a href="https://protomaps.com">Protomaps</a>, built from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> data © OpenStreetMap contributors.</li>
+      </ul>
+      <p class="warn"><b>Disclaimer:</b> These figures are estimates for general information only, and their accuracy is not guaranteed. Actual bills depend on taxable value, exemptions, special assessments and other factors, and a property may sit in a different taxing district than the map shows. Please consult a tax advisor or your local assessor for guidance on your specific circumstances.</p>
+    </div>
+  </aside>
+  <main id="map" aria-label="Map of Michigan property tax by area"></main>
+</div>
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script src="style.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
