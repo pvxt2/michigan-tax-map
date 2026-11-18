@@ -196,11 +196,12 @@
       layout: { "text-field": lf["label-munis"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 8.6, 11, 11, 14],
         "text-max-width": 8, "symbol-sort-key": ["get", "r"], "text-padding": 3 },
       paint: text({ "text-halo-width": 1.8 }) });
-    add({ id: "label-areas", type: "symbol", source: "tax", "source-layer": "area_labels", minzoom: 10.6,
-      layout: { "text-field": lf["label-areas"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 10.6, 12.5, 15, 15.5],
+    // Same zoom and fade as the tax-area colors and outlines (fill-areas, edge-areas).
+    add({ id: "label-areas", type: "symbol", source: "tax", "source-layer": "area_labels", minzoom: 10,
+      layout: { "text-field": lf["label-areas"], "text-font": font("m"), "text-size": ["interpolate", ["linear"], ["zoom"], 10, 12, 15, 15.5],
         "icon-image": `tag-${o.theme === "dark" ? "dark" : "light"}`, "icon-text-fit": "both", "icon-text-fit-padding": [2, 6, 2, 6],
         "symbol-sort-key": ["get", "r"], "text-padding": 4 },
-      paint: { "text-color": P.ink, "text-opacity": fade(10.6, 1), "icon-opacity": fade(10.6, 1) } });
+      paint: { "text-color": P.ink, "text-opacity": fade(10, 1), "icon-opacity": fade(10, 1) } });
 
     return {
       version: 8,

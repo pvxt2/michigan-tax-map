@@ -493,7 +493,7 @@ def main():
     write_seq(sl, OUT / "school_labels.geojsonl", "school_labels", 11, 14, ["sdname"])
     al = label_points(areas[areas.h.notna() & (areas.km2 > 0.3)])
     al["r"] = al["km2"].rank(ascending=False).astype(int)
-    write_seq(al, OUT / "area_labels.geojsonl", "area_labels", 11, 14, ["h", "n", "r"])
+    write_seq(al, OUT / "area_labels.geojsonl", "area_labels", 10, 14, ["h", "n", "r"])
 
     # Color scale domain and search index.
     def q(s):
