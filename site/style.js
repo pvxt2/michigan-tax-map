@@ -60,7 +60,8 @@
 
   function taxLabel(type, value) {
     const sevPerMill = value / 2 / 1000;
-    return ["number-format", ["*", ["get", type], sevPerMill], { currency: "USD", "max-fraction-digits": 0, "min-fraction-digits": 0 }];
+    // Rounded to the dollar before formatting, so no cents appear on any browser.
+    return ["concat", "$", ["number-format", ["round", ["*", ["get", type], sevPerMill]], { "max-fraction-digits": 0 }]];
   }
 
   // Name with the typical tax underneath (counties, cities, townships), and the tax-area amounts.
@@ -73,7 +74,7 @@
   function labelFields(type, value, P) {
     return {
       "label-counties": nameWithTax(["upcase", ["get", "cname"]], type, value, P),
-      "label-munis": nameWithTax(["get", "uname"], type, value, P),
+      "label-munis": ["get", "uname"],
       "label-areas": taxLabel(type, value),
     };
   }
