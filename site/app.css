@@ -52,7 +52,8 @@ main{position:relative;min-width:0;min-height:0;background:var(--bg)}
  .maplibregl-ctrl-group button{width:44px;height:44px}#res li{padding:12px 10px}}
 @media (max-width:900px){
  .app{display:block;position:relative;overflow:hidden}
- main{position:absolute;inset:0}
+ /* #map, not main: maplibre-gl.css sets .maplibregl-map{position:relative}, which would win over "main". */
+ #map{position:absolute;inset:0;height:auto}
  aside{position:absolute;left:0;right:0;bottom:0;z-index:5;max-height:68vh;max-height:68dvh;border-right:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;
   box-shadow:0 -6px 24px rgba(0,0,0,.18);padding-top:0;padding-right:max(18px,env(safe-area-inset-right,0px));padding-bottom:max(20px,env(safe-area-inset-bottom,0px));transition:transform .22s ease;overscroll-behavior:contain}
  aside.collapsed{transform:translateY(calc(100% - 64px - env(safe-area-inset-bottom,0px)));overflow:hidden}
