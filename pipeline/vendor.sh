@@ -7,8 +7,8 @@ TMP=$(mktemp -d)
 mkdir -p site/vendor
 cp "$TMP/node_modules/maplibre-gl/dist/maplibre-gl.js" site/vendor/
 cp "$TMP/node_modules/maplibre-gl/dist/maplibre-gl.css" site/vendor/
-PMT=$(ls "$TMP"/node_modules/pmtiles/dist/pmtiles.js "$TMP"/node_modules/pmtiles/dist/index.js 2>/dev/null | head -1)
-cp "$PMT" site/vendor/pmtiles.js
+# pmtiles.js is the browser build that defines the global "pmtiles".
+cp "$TMP/node_modules/pmtiles/dist/pmtiles.js" site/vendor/pmtiles.js
 node -e "for (const p of ['maplibre-gl','pmtiles']) console.log(p, require('$TMP/node_modules/'+p+'/package.json').version)" > site/vendor/VERSIONS.txt
 
 # Fonts (glyph files) from Protomaps' basemap assets.

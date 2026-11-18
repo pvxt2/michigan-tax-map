@@ -16,21 +16,21 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       FULL: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
       - name: Copy map libraries and fonts into the site
         run: bash pipeline/vendor.sh
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: env.FULL == 'true'
         with:
           python-version: "3.12"
@@ -93,7 +93,7 @@ jobs:
 
       - name: Save match report files
         if: always() && env.FULL == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: match-report
           path: work/qa/
@@ -145,7 +145,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save the site files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: site-update
           path: dist/
@@ -154,7 +154,7 @@ jobs:
 
       - name: Save the basemap
         if: steps.bmfetch.outputs.fresh == 'true' || inputs.include_basemap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: basemap
           path: dist-basemap/
