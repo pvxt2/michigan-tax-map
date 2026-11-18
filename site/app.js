@@ -136,7 +136,7 @@
     if (s.layer === "areas") {
       const sub = [p.sdname, p.vname ? `Village of ${p.vname}` : null].filter(Boolean).map(esc).join(" · ");
       d.innerHTML = `
-        <h2>${esc(p.uname)}${p.star ? " *" : ""}${p.est ? " (estimate)" : ""}</h2>
+        <h2>${esc(p.uname)}${p.star ? " *" : ""}</h2>
         <div class="dsub">${sub}<br>${esc(p.cname)} County</div>
         ${p[t] == null ? `<div class="tax">No rate found</div><div class="per">The state's rate file has no row for this area.</div>` : `
         <div class="tax">${usd.format(tax(p[t]))}</div>
@@ -145,7 +145,6 @@
         <div class="row"><span>${label[o]} rate</span><span>${mills(p[o])}</span></div>
         <div class="row"><span>${label[o]} tax</span><span>${p[o] == null ? "—" : usd.format(tax(p[o]))}</span></div>
         ${altRows(p, t)}
-        ${p.est ? `<p class="hint">Estimate: the state's school district map and Treasury's rate list don't line up here (the district was likely merged or renamed), so this uses the rate of the neighboring area.</p>` : ""}
         ${p.vname && !p.vrate ? `<p class="hint">No village rate was found for this school district, so the township rate is shown.</p>` : ""}
         ${p.star ? `<p class="hint">* The state lists a second rate for this district here; the first is shown.</p>` : ""}`;
       return;

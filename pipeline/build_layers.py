@@ -436,30 +436,6 @@ def main():
             areas.at[i, k] = areas.at[best, k]
         absorbed += 1
 
-    # Areas still without a rate (a district dissolved or missing from Treasury's list, small islands):
-    # use the rate of the rated area sharing the longest border in the same city or township, else the
-    # nearest one. These are marked as estimates on the map.
-    areas["est"] = 0
-    rated = areas[areas.h.notna()]
-    sidx = rated.sindex
-    estimated = 0
-    for i, r in areas[areas.h.isna()].iterrows():
-        probe = r.geometry.buffer(5)
-        cand = rated.iloc[sidx.query(probe, predicate="intersects")]
-        cand = cand[cand.uid == r.uid] if (cand.uid == r.uid).any() else cand
-        if cand.empty:
-            same = rated[rated.uid == r.uid]
-            pool = same if len(same) else rated
-            j = pool.distance(r.geometry).idxmin()
-            if pool.at[j, "geometry"].distance(r.geometry) > 5000:
-                continue
-        else:
-            j = max(cand.index, key=lambda k: probe.intersection(cand.at[k, "geometry"].boundary).length)
-        for k in ("h", "n", "vrate"):
-            areas.at[i, k] = areas.at[j, k]
-        areas.at[i, "est"] = 1
-        estimated += 1
-
     areas["vkey"] = areas["vname"].fillna("")
     areas = areas.dissolve(by=["uid", "dcode", "vkey"], as_index=False, aggfunc="first")
     areas["m2"] = areas.area
@@ -475,8 +451,7 @@ def main():
     vil_fallback = areas[areas.vname.notna() & (areas.vrate == 0) & areas.h.notna()]
     vil_fallback[["uname", "cname", "vname", "sdname"]].to_csv(QA / "villages_using_township_rate.csv", index=False)
     report += [
-        f"Tax areas: {len(areas)} ({absorbed} slivers merged, {estimated} given a neighbouring rate, "
-        f"{len(paired)} renamed or merged districts paired)",
+        f"Tax areas: {len(areas)} ({absorbed} slivers merged, {len(paired)} renamed or merged districts paired)",
         f"Area with a rate: {rated_share:.1%}",
         f"Areas without a rate: {len(unrated)} (see areas_without_rates.csv)",
         f"Treasury rows not placed on the map: {len(unused_rows)} (see treasury_rows_not_on_map.csv)",
@@ -505,7 +480,7 @@ def main():
     # Write layers.
     cp = ["id", "cname", "h", "n", "hmin", "hmax", "nmin", "nmax", "cnt"]
     mp = ["id", "uname", "utype", "cname", "h", "n", "hmin", "hmax", "nmin", "nmax", "cnt"]
-    ap = ["id", "uname", "cname", "sdname", "vname", "h", "n", "star", "vrate", "est", "alt"]
+    ap = ["id", "uname", "cname", "sdname", "vname", "h", "n", "star", "vrate", "alt"]
     write_seq(counties, OUT / "counties.geojsonl", "counties", 4, 14, cp)
     write_seq(munis, OUT / "munis.geojsonl", "munis", 6, 14, mp)
     write_seq(areas, OUT / "areas.geojsonl", "areas", 9, 14, ap)
