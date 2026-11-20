@@ -44,6 +44,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-of
 .src{font-size:12px;color:var(--mut);border-top:1px solid var(--line);padding-top:14px}
 .src ul{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .src .warn{margin:0;color:var(--ink)}
+.src .owner{margin:0 0 10px;font-size:13px}.src .owner a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
 main{position:relative;min-width:0;min-height:0;background:var(--bg)}
 .maplibregl-ctrl-group button{width:36px;height:36px}
 .maplibregl-ctrl-attrib{font-size:11px}
@@ -57,7 +58,7 @@ main{position:relative;min-width:0;min-height:0;background:var(--bg)}
  aside{position:absolute;left:0;right:0;bottom:0;z-index:5;max-height:68vh;max-height:68dvh;border-right:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;
   box-shadow:0 -6px 24px rgba(0,0,0,.18);padding-top:0;padding-right:max(18px,env(safe-area-inset-right,0px));padding-bottom:max(20px,env(safe-area-inset-bottom,0px));transition:transform .22s ease;overscroll-behavior:contain}
  aside.collapsed{transform:translateY(calc(100% - 64px - env(safe-area-inset-bottom,0px)));overflow:hidden}
- .sheet-h{display:flex;flex-direction:column;align-items:center;gap:6px;position:sticky;top:0;z-index:3;background:var(--panel);border:0;border-radius:16px 16px 0 0;color:var(--ink);font:inherit;padding:8px 4px 10px;min-height:64px;cursor:pointer;width:100%}
+ .sheet-h{display:flex;flex-direction:column;align-items:center;gap:6px;position:sticky;top:0;z-index:3;background:var(--panel);border:0;border-radius:16px 16px 0 0;color:var(--ink);font:inherit;padding:8px 4px 10px;min-height:64px;cursor:grab;width:100%;touch-action:none;user-select:none;-webkit-user-select:none}
  .sheet-h{order:-3}aside>header{order:-2}#detail{order:-1}
  .sheet-h:before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line)}
  .sheet-h span{font-size:15px;font-weight:600;text-align:center;text-wrap:balance}

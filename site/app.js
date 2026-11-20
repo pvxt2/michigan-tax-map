@@ -78,7 +78,7 @@
 
   const TIERS = [
     { layer: "counties", max: 8.3, label: "Showing counties (area-weighted average). Zoom in for cities and townships." },
-    { layer: "munis", max: 10.3, label: "Showing cities and townships (area-weighted average). Zoom in for each school district and village." },
+    { layer: "munis", max: 10, label: "Showing cities and townships (area-weighted average). Zoom in for each school district and village." },
     { layer: "areas", max: 99, label: "Showing each tax area: city or township × school district × village." },
   ];
   const tier = () => TIERS.find((t) => map.getZoom() < t.max);
@@ -121,7 +121,15 @@
     show(S.pinned || (coarse ? null : f));
     saveHash();
   });
-  map.on("zoom", () => { $("tier").textContent = tier().label; });
+  // Once the individual tax areas are visible (zoom 10+), a county or city/township average is
+  // no longer shown: its selection and breakdown are cleared.
+  function dropAverages() {
+    if (tier().layer !== "areas" || !S.shown || S.shown.layer === "areas") return;
+    S.pinned = null;
+    show(null);
+    saveHashSoon();
+  }
+  map.on("zoom", () => { $("tier").textContent = tier().label; dropAverages(); });
 
   // ------------------------------------------------------------------ panel
   function renderDetail() {
@@ -177,8 +185,9 @@
 
   function renderSummary() {
     const s = S.shown, t = S.type;
-    let txt = `${usd.format(S.value)} · ${t === "h" ? "Homestead" : "Non-homestead"} — tap for controls`;
-    if (s && s.p[t] != null) {
+    const open = !$("aside").classList.contains("collapsed");
+    let txt = open ? "Swipe down to see the map" : `${usd.format(S.value)} · ${t === "h" ? "Homestead" : "Non-homestead"} — swipe up for controls`;
+    if (!open && s && s.p[t] != null) {
       const name = s.layer === "counties" ? `${s.p.cname} County` : s.p.uname;
       txt = `${name}: ${usd.format(tax(s.p[t]))}/yr${s.layer === "areas" ? "" : " typical"}`;
     }
@@ -218,13 +227,62 @@
   $("bH").addEventListener("click", () => setType("h"));
   $("bN").addEventListener("click", () => setType("n"));
 
-  // Mobile bottom sheet.
-  const aside = $("aside");
-  $("sheetH").addEventListener("click", () => {
-    const open = aside.classList.toggle("collapsed") === false;
-    $("sheetH").setAttribute("aria-expanded", open);
+  // Mobile bottom sheet: swipe the handle up or down (or tap it). When the sheet is open and
+  // scrolled to the top, pulling the content down also closes it.
+  const aside = $("aside"), handle = $("sheetH");
+  const isSheet = () => innerWidth <= 900;
+  function setSheet(open) {
+    aside.classList.toggle("collapsed", !open);
+    handle.setAttribute("aria-expanded", open);
     if (!open) aside.scrollTop = 0;
-  });
+    renderSummary();
+  }
+  let drag = null, justDragged = false;
+  const safeProbe = document.createElement("div");
+  safeProbe.style.cssText = "position:fixed;visibility:hidden;height:env(safe-area-inset-bottom,0px)";
+  document.body.appendChild(safeProbe);
+  function closedOffset() { return aside.offsetHeight - handle.offsetHeight - safeProbe.offsetHeight; }
+  function dragStart(e, fromContent) {
+    if (!isSheet() || e.touches.length !== 1) return;
+    const open = !aside.classList.contains("collapsed");
+    if (fromContent && (!open || aside.scrollTop > 0)) return;
+    drag = { y0: e.touches[0].clientY, t0: performance.now(), open, dy: 0, moved: false, fromContent, max: closedOffset() };
+  }
+  function dragMove(e) {
+    if (!drag) return;
+    const dy = e.touches[0].clientY - drag.y0;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 6) return;
+      if (drag.fromContent && (dy < 0 || aside.scrollTop > 0)) { drag = null; return; } // normal scrolling
+      drag.moved = true;
+      aside.style.transition = "none";
+    }
+    e.preventDefault();
+    drag.dy = dy;
+    const ty = Math.min(drag.max, Math.max(0, (drag.open ? 0 : drag.max) + dy));
+    aside.style.transform = `translateY(${ty}px)`;
+  }
+  function dragEnd() {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (!d.moved) return;
+    aside.style.transition = "";
+    aside.style.transform = "";
+    const v = d.dy / Math.max(1, performance.now() - d.t0); // px per ms; negative = up
+    setSheet(Math.abs(v) > 0.35 ? v < 0 : d.open ? d.dy < d.max / 3 : d.dy < -d.max / 3);
+    justDragged = true; // swallow the click some browsers send at the end of a swipe
+    setTimeout(() => { justDragged = false; }, 400);
+  }
+  handle.addEventListener("touchstart", (e) => dragStart(e, false), { passive: true });
+  aside.addEventListener("touchstart", (e) => { if (!handle.contains(e.target)) dragStart(e, true); }, { passive: true });
+  aside.addEventListener("touchmove", dragMove, { passive: false });
+  aside.addEventListener("touchend", dragEnd);
+  aside.addEventListener("touchcancel", dragEnd);
+  aside.addEventListener("click", (e) => {
+    if (justDragged) { justDragged = false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  handle.addEventListener("click", () => setSheet(aside.classList.contains("collapsed")));
 
   darkQ.addEventListener("change", () => map.setStyle(buildStyle(styleOpts())));
 
@@ -279,7 +337,7 @@
     q.blur();
     const maxZoom = { county: 8.2, city: 12.5, township: 11.5, village: 13, school: 10.8 }[h.k];
     map.fitBounds([[h.b[0], h.b[1]], [h.b[2], h.b[3]]], { padding: narrow ? 30 : 60, maxZoom, duration: 900 });
-    if (innerWidth <= 900) { aside.classList.add("collapsed"); $("sheetH").setAttribute("aria-expanded", "false"); }
+    if (isSheet()) setSheet(false);
   }
 
   // ------------------------------------------------------------------ shareable link
@@ -301,7 +359,7 @@
     const layer = startSel[0], id = Number(startSel[1]);
     map.once("idle", () => {
       const f = map.querySourceFeatures("tax", { sourceLayer: layer, filter: ["==", ["get", "id"], id] })[0];
-      if (f) { S.pinned = { layer, id, p: f.properties }; show(S.pinned); }
+      if (f) { S.pinned = { layer, id, p: f.properties }; show(S.pinned); dropAverages(); }
     });
   }
 
